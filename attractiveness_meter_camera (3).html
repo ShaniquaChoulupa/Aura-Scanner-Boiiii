@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attractiveness Meter & Scanner</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        glass: {
+                            100: 'rgba(255, 255, 255, 0.05)',
+                            200: 'rgba(255, 255, 255, 0.1)',
+                            300: 'rgba(255, 255, 255, 0.15)',
+                            border: 'rgba(255, 255, 255, 0.18)',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at top left, #1e1b4b, #0f172a, #030712);
+            min-height: 100vh;
+            color: #f3f4f6;
+        }
+
+        /* Glassmorphism backdrop blur */
+        .glass-card {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+        }
+
+        /* Gauge Arc styling */
+        .gauge-background {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.1);
+            stroke-width: 22;
+            stroke-linecap: round;
+        }
+
+        .gauge-meter-path {
+            fill: none;
+            stroke-width: 22;
+            stroke-linecap: round;
+        }
+
+        /* Glowing Dot Pointer */
+        .meter-pointer-dot {
+            transition: all 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0px 0px 12px #facc15);
+        }
+
+        /* Scanning Laser Bar */
+        @keyframes scanMove {
+            0% { top: 0%; opacity: 0; }
+            15% { opacity: 1; }
+            85% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+
+        .scanner-laser {
+            animation: scanMove 1.8s ease-in-out infinite alternate;
+            background: linear-gradient(180deg, rgba(236, 72, 153, 0) 0%, rgba(236, 72, 153, 0.8) 50%, rgba(250, 204, 21, 1) 100%);
+            box-shadow: 0 0 15px #ec4899, 0 0 25px #facc15;
+        }
+
+        /* Scanline Texture */
+        .scanline {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0, 0, 0, 0.35) 50%,
+                rgba(0, 0, 0, 0.35)
+            );
+            background-size: 100% 4px;
+        }
+
+        /* Animated Ambient Background Glow */
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.35; transform: scale(1); }
+            50% { opacity: 0.65; transform: scale(1.08); }
+        }
+
+        .ambient-bg {
+            animation: pulseGlow 8s infinite ease-in-out;
+        }
+
+        /* Shimmer Effect on Score */
+        @keyframes scoreShimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .shimmer-text {
+            background: linear-gradient(90deg, #ffffff 0%, #facc15 50%, #ffffff 100%);
+            background-size: 200% auto;
+            color: transparent;
+            -webkit-background-clip: text;
+            animation: scoreShimmer 3s linear infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between p-4 md:p-8 min-h-screen relative overflow-x-hidden selection:bg-pink-500 selection:text-white">
+
+    <!-- Ambient Background Lighting -->
+    <div class="ambient-bg absolute -top-32 -left-32 w-96 h-96 bg-pink-600/40 rounded-full blur-[130px] pointer-events-none"></div>
+    <div class="ambient-bg absolute -bottom-32 -right-32 w-96 h-96 bg-purple-600/40 rounded-full blur-[130px] pointer-events-none"></div>
+
+    <!-- Header Section -->
+    <header class="w-full max-w-5xl flex items-center justify-between mb-6 z-10">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-pink-500 via-purple-500 to-yellow-400 flex items-center justify-center shadow-lg shadow-pink-500/30">
+                <i class="fa-solid font-bold text-xl text-slate-950 fa-wand-magic-sparkles"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-200 to-slate-400">
+                    AuraScan <span class="text-xs px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30">AI Photo Scanner</span>
+                </h1>
+                <p class="text-xs text-slate-400">Snap a picture to measure your instant aura & attractiveness score</p>
+            </div>
+        </div>
+
+        <!-- Mute Sound Toggle -->
+        <button id="soundToggleBtn" onclick="toggleSound()" class="glass-card px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 hover:bg-white/10 transition-all text-slate-300">
+            <i class="fa-solid fa-volume-high" id="soundIcon"></i>
+            <span id="soundText" class="hidden sm:inline">Sound On</span>
+        </button>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-6 z-10 my-auto">
+
+        <!-- Left Column: Camera Preview & Snapshot View -->
+        <section class="lg:col-span-7 flex flex-col justify-center items-center">
+            <div class="glass-card w-full rounded-3xl p-3.5 relative overflow-hidden shadow-2xl flex flex-col gap-3">
+                
+                <!-- Video / Snapshot Viewport -->
+                <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-slate-950 flex items-center justify-center border border-white/10 shadow-inner">
+                    
+                    <!-- Live Camera Feed -->
+                    <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover -scale-x-100 transition-opacity duration-300"></video>
+                    
+                    <!-- Freeze Snapshot Canvas -->
+                    <canvas id="snapshotCanvas" class="hidden absolute inset-0 w-full h-full object-cover"></canvas>
+
+                    <!-- Camera Off / Permission Fallback -->
+                    <div id="cameraOffPlaceholder" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-slate-400 gap-3 p-6 text-center">
+                        <i class="fa-solid fa-video-slash text-4xl text-pink-500/60"></i>
+                        <p class="text-sm font-medium">Camera access disabled or unavailable.</p>
+                        <p class="text-xs text-slate-500">Allow camera permissions or upload/try mock analysis below.</p>
+                        <button onclick="startWebcam()" class="px-4 py-2 rounded-xl bg-pink-500/20 text-pink-300 border border-pink-500/40 text-xs font-semibold hover:bg-pink-500/30 transition-all">
+                            Retry Camera
+                        </button>
+                    </div>
+
+                    <!-- Target Facial Tracking Overlay (Active in preview mode) -->
+                    <div id="faceOverlay" class="absolute inset-0 pointer-events-none flex items-center justify-center transition-opacity duration-300">
+                        <div class="w-52 h-64 border-2 border-dashed border-pink-500/50 rounded-full relative animate-pulse flex items-center justify-center">
+                            <div class="w-full h-0.5 bg-gradient-to-r from-transparent via-pink-400/50 to-transparent absolute top-1/2 -translate-y-1/2"></div>
+                            <span class="absolute top-3 text-[10px] tracking-widest uppercase text-pink-300/80 font-mono bg-slate-950/60 px-2 py-0.5 rounded-full border border-pink-500/30">
+                                Position Face Here
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Scanning Laser Bar & Overlay Matrix (Active during scan) -->
+                    <div id="scanningOverlay" class="hidden absolute inset-0 pointer-events-none z-20">
+                        <!-- Laser line -->
+                        <div class="scanner-laser absolute left-0 right-0 h-1 z-10"></div>
+                        <!-- Tech Grid Overlay -->
+                        <div class="absolute inset-0 bg-[radial-gradient(#ec4899_1px,transparent_1px)] [background-size:16px_16px] opacity-25"></div>
+                    </div>
+
+                    <!-- Scan Progress Overlay Box -->
+                    <div id="scanStatusBox" class="hidden absolute bottom-4 left-4 right-4 glass-card p-3 rounded-xl z-30 border border-pink-500/30 flex flex-col gap-2">
+                        <div class="flex items-center justify-between text-xs font-mono">
+                            <span id="scanStatusText" class="text-pink-300 font-semibold">INITIALIZING AI FACIAL SCAN...</span>
+                            <span id="scanProgressText" class="text-yellow-400 font-bold">0%</span>
+                        </div>
+                        <!-- Progress Bar Track -->
+                        <div class="w-full bg-slate-900/80 h-2 rounded-full overflow-hidden border border-white/10">
+                            <div id="progressBar" class="bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-400 h-full w-0 transition-all duration-100 rounded-full"></div>
+                        </div>
+                    </div>
+
+                    <!-- Mode Indicator Badge -->
+                    <div class="absolute top-4 left-4 flex gap-2 z-10">
+                        <span id="modeBadge" class="bg-slate-950/80 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 text-slate-300 shadow-md">
+                            <span id="liveDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                            <span id="modeText">READY TO SCAN</span>
+                        </span>
+                    </div>
+
+                    <div class="scanline absolute inset-0 pointer-events-none opacity-40"></div>
+                </div>
+
+                <!-- Action Controls Bar -->
+                <div class="flex items-center gap-3">
+                    <!-- Take Photo / Scan Button -->
+                    <button id="scanBtn" onclick="takePhotoAndScan()" class="flex-1 py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 bg-gradient-to-r from-pink-500 via-purple-600 to-yellow-500 hover:opacity-95 text-slate-950 shadow-lg shadow-pink-500/25 active:scale-[0.98] transition-all">
+                        <i class="fa-solid fa-camera text-base"></i>
+                        <span>Take Photo & Scan</span>
+                    </button>
+
+                    <!-- Retake / Reset Button (Hidden until photo taken) -->
+                    <button id="retakeBtn" onclick="resetToLiveView()" class="hidden flex-1 py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 glass-card bg-white/10 hover:bg-white/15 text-white border border-white/20 active:scale-[0.98] transition-all">
+                        <i class="fa-solid fa-rotate-left text-base text-pink-400"></i>
+                        <span>Retake</span>
+                    </button>
+
+                    <!-- Save / Download Screenshot Button (Hidden until score is calculated) -->
+                    <button id="downloadBtn" onclick="generateAndDownloadCard()" class="hidden flex-1 py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 bg-gradient-to-r from-emerald-400 to-teal-500 hover:opacity-95 text-slate-950 shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all">
+                        <i class="fa-solid fa-download text-base"></i>
+                        <span>Save Result Card</span>
+                    </button>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Right Column: Attractiveness Gauge & Verdict Results -->
+        <section class="lg:col-span-5 flex flex-col justify-center gap-6">
+
+            <!-- Gauge Card -->
+            <div class="glass-card rounded-3xl p-6 flex flex-col items-center justify-between relative shadow-2xl overflow-hidden border border-white/10">
+
+                <div class="w-full text-center mb-1">
+                    <h2 class="text-xs font-bold text-purple-300 uppercase tracking-widest font-mono">Attractiveness Meter</h2>
+                </div>
+
+                <!-- SVG Arc Meter -->
+                <div class="relative w-full max-w-[290px] aspect-[2/1] flex items-center justify-center mt-2">
+                    <svg class="w-full h-full overflow-visible" viewBox="0 0 200 110">
+                        <defs>
+                            <!-- Rainbow Arc Gradient: Red -> Orange -> Yellow -> Green -->
+                            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#ef4444" />   <!-- Red -->
+                                <stop offset="35%" stop-color="#f97316" />  <!-- Orange -->
+                                <stop offset="65%" stop-color="#facc15" />  <!-- Yellow -->
+                                <stop offset="100%" stop-color="#22c55e" /> <!-- Green -->
+                            </linearGradient>
+                            
+                            <!-- Yellow Glow for Indicator Dot -->
+                            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="4" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
+                        </defs>
+
+                        <!-- Background Track Arc -->
+                        <path d="M 20 100 A 80 80 0 0 1 180 100" class="gauge-background" />
+
+                        <!-- Colored Meter Gradient Arc -->
+                        <path d="M 20 100 A 80 80 0 0 1 180 100" class="gauge-meter-path" stroke="url(#gaugeGradient)" />
+
+                        <!-- Scale Reference Ticks -->
+                        <line x1="20" y1="100" x2="10" y2="100" stroke="rgba(255,255,255,0.3)" stroke-width="2" />
+                        <line x1="100" y1="20" x2="100" y2="10" stroke="rgba(255,255,255,0.3)" stroke-width="2" />
+                        <line x1="180" y1="100" x2="190" y2="100" stroke="rgba(255,255,255,0.3)" stroke-width="2" />
+
+                        <!-- Yellow Glowing Indicator Dot (Positioned dynamically via JS) -->
+                        <circle id="meterDot" cx="100" cy="100" r="9" fill="#facc15" stroke="#ffffff" stroke-width="2.5" class="meter-pointer-dot opacity-30" filter="url(#glow)"/>
+                    </svg>
+
+                    <!-- Gauge Labels -->
+                    <span class="absolute bottom-0 left-1 text-xs font-bold text-red-400">0%</span>
+                    <span class="absolute top-0 left-1/2 -translate-x-1/2 text-xs font-bold text-yellow-400">50%</span>
+                    <span class="absolute bottom-0 right-1 text-xs font-bold text-emerald-400">100%</span>
+                </div>
+
+                <!-- Digital Score & Final Verdict Output -->
+                <div class="text-center mt-5 w-full flex flex-col items-center">
+                    <div class="flex items-baseline justify-center gap-1">
+                        <span id="scoreDisplay" class="text-6xl font-extrabold tracking-tight font-mono text-slate-500">--</span>
+                        <span id="scorePercentSymbol" class="text-slate-500 font-bold text-2xl">%</span>
+                    </div>
+
+                    <!-- Verdict Badge -->
+                    <div id="verdictBadge" class="mt-3 px-4 py-1.5 rounded-full text-xs font-bold bg-slate-800/80 text-slate-400 border border-white/10 uppercase tracking-wider transition-all duration-300">
+                        Awaiting Photo Capture...
+                    </div>
+
+                    <!-- Fun Sub-Verdict Quote -->
+                    <p id="verdictQuote" class="text-xs text-slate-400 mt-2.5 h-8 italic px-2">
+                        Click "Take Photo & Scan" to run analysis.
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- Analysis Breakdown Card (Revealed after scan) -->
+            <div id="breakdownCard" class="glass-card rounded-3xl p-5 flex flex-col gap-3 border border-white/10 transition-all opacity-60">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between font-mono">
+                    <span><i class="fa-solid fa-chart-simple text-pink-400 mr-1.5"></i> Aura Analysis</span>
+                    <span id="analysisStatus" class="text-[10px] text-slate-500">IDLE</span>
+                </h3>
+
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/5 flex flex-col">
+                        <span class="text-slate-500 text-[10px]">FACIAL SYMMETRY</span>
+                        <span id="symmetryVal" class="font-mono font-bold text-slate-300 text-sm">--</span>
+                    </div>
+                    <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/5 flex flex-col">
+                        <span class="text-slate-500 text-[10px]">CHARM FACTOR</span>
+                        <span id="charmVal" class="font-mono font-bold text-slate-300 text-sm">--</span>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Offscreen Canvas for Generating High-Res Side-by-Side Download Card -->
+    <canvas id="exportCanvas" class="hidden"></canvas>
+
+    <!-- Footer -->
+    <footer class="w-full max-w-5xl text-center text-xs text-slate-500 mt-6 z-10">
+        <p>AuraScan AI Engine • Entertainment Purpose Only • Web Audio Synth Powered</p>
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // DOM Elements
+        const webcam = document.getElementById('webcam');
+        const snapshotCanvas = document.getElementById('snapshotCanvas');
+        const exportCanvas = document.getElementById('exportCanvas');
+        const cameraOffPlaceholder = document.getElementById('cameraOffPlaceholder');
+        const faceOverlay = document.getElementById('faceOverlay');
+        const scanningOverlay = document.getElementById('scanningOverlay');
+        const scanStatusBox = document.getElementById('scanStatusBox');
+        const scanStatusText = document.getElementById('scanStatusText');
+        const scanProgressText = document.getElementById('scanProgressText');
+        const progressBar = document.getElementById('progressBar');
+        const modeBadge = document.getElementById('modeBadge');
+        const modeText = document.getElementById('modeText');
+        const liveDot = document.getElementById('liveDot');
+        
+        const scanBtn = document.getElementById('scanBtn');
+        const retakeBtn = document.getElementById('retakeBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const meterDot = document.getElementById('meterDot');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const scorePercentSymbol = document.getElementById('scorePercentSymbol');
+        const verdictBadge = document.getElementById('verdictBadge');
+        const verdictQuote = document.getElementById('verdictQuote');
+        
+        const breakdownCard = document.getElementById('breakdownCard');
+        const analysisStatus = document.getElementById('analysisStatus');
+        const symmetryVal = document.getElementById('symmetryVal');
+        const charmVal = document.getElementById('charmVal');
+
+        // Web Audio API Sound Generator State
+        let audioCtx = null;
+        let soundEnabled = true;
+
+        // State variables
+        let stream = null;
+        let isScanning = false;
+        let lastCalculatedScore = null;
+        let currentVerdict = null;
+
+        // Detailed Verdict Matrix
+        const verdictLevels = [
+            {
+                max: 20,
+                label: "Cryptid Energy 🐺",
+                badgeClass: "bg-red-500/20 text-red-300 border-red-500/40",
+                quotes: ["Perhaps you were caught mid-sneeze?", "Mysterious cryptid lurking in the shadows.", "100% Unfiltered chaotic energy!"]
+            },
+            {
+                max: 40,
+                label: "Sleep Deprived ☕",
+                badgeClass: "bg-orange-500/20 text-orange-300 border-orange-500/40",
+                quotes: ["Needs 8 hours of sleep & a double espresso.", "Resting face mode activated.", "Rough morning aura, but genuine!"]
+            },
+            {
+                max: 60,
+                label: "50% - Charming & Friendly 😊",
+                badgeClass: "bg-yellow-500/20 text-yellow-300 border-yellow-500/40",
+                quotes: ["Warm, approachable, and classic cute vibes!", "Effortless casual charm.", "Great smile energy radiating!"]
+            },
+            {
+                max: 85,
+                label: "75% - Very Attractive! ✨",
+                badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+                quotes: ["Looking fresh and extremely photogenic!", "High-tier aura detected.", "A natural showstopper!"]
+            },
+            {
+                max: 100,
+                label: "100% - Absolute Stunner! 🔥",
+                badgeClass: "bg-pink-500/20 text-pink-300 border-pink-500/40",
+                quotes: ["Off the charts! Main character perfection.", "Hollywood star material ✨", "Unstoppable magnetic aura!"]
+            }
+        ];
+
+        // Web Audio Sound Synthesizer
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    audioCtx = new AudioContext();
+                }
+            }
+        }
+
+        function playBeep(freq, duration, type = 'sine') {
+            if (!soundEnabled || !audioCtx) return;
+            try {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.error("Audio playback error:", e);
+            }
+        }
+
+        function playScanSweep() {
+            if (!soundEnabled || !audioCtx) return;
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 1.8);
+
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + 1.8);
+            } catch (e) {
+                console.error("Audio playback error:", e);
+            }
+        }
+
+        function playFanfareSound() {
+            if (!soundEnabled || !audioCtx) return;
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((freq, idx) => {
+                setTimeout(() => {
+                    playBeep(freq, 0.4, 'triangle');
+                }, idx * 120);
+            });
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const soundIcon = document.getElementById('soundIcon');
+            const soundText = document.getElementById('soundText');
+
+            if (soundEnabled) {
+                soundIcon.className = "fa-solid fa-volume-high";
+                soundText.textContent = "Sound On";
+                initAudio();
+                playBeep(880, 0.1);
+            } else {
+                soundIcon.className = "fa-solid fa-volume-xmark text-slate-500";
+                soundText.textContent = "Muted";
+            }
+        }
+
+        // Initialize Live Webcam Feed
+        async function startWebcam() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 },
+                        facingMode: "user" 
+                    } 
+                });
+                webcam.srcObject = stream;
+                cameraOffPlaceholder.classList.add('hidden');
+                webcam.classList.remove('opacity-0');
+            } catch (err) {
+                console.warn("Camera access denied or unavailable:", err);
+                cameraOffPlaceholder.classList.remove('hidden');
+                webcam.classList.add('opacity-0');
+            }
+        }
+
+        // Capture Snapshot from Video and Display on Canvas
+        function captureSnapshot() {
+            const width = webcam.videoWidth || 640;
+            const height = webcam.videoHeight || 480;
+
+            snapshotCanvas.width = width;
+            snapshotCanvas.height = height;
+
+            const ctx = snapshotCanvas.getContext('2d');
+            
+            // Mirror flip horizontal to match video view
+            ctx.translate(width, 0);
+            ctx.scale(-1, 1);
+            
+            if (webcam.srcObject && webcam.readyState === 4) {
+                ctx.drawImage(webcam, 0, 0, width, height);
+            } else {
+                // Fallback gradient image if camera is not active
+                ctx.restore();
+                const grad = ctx.createLinearGradient(0, 0, width, height);
+                grad.addColorStop(0, '#833ab4');
+                grad.addColorStop(0.5, '#fd1d1d');
+                grad.addColorStop(1, '#fcb045');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, width, height);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '24px Outfit';
+                ctx.textAlign = 'center';
+                ctx.fillText('Snapshot Captured', width / 2, height / 2);
+            }
+
+            snapshotCanvas.classList.remove('hidden');
+            webcam.classList.add('hidden');
+        }
+
+        // Calculate (X, Y) Coordinates for Indicator Dot on Arc
+        function calculateDotPosition(scorePercent) {
+            const angleInDegrees = 180 - (scorePercent / 100) * 180;
+            const angleInRadians = (angleInDegrees * Math.PI) / 180;
+            
+            const radius = 80;
+            const centerX = 100;
+            const centerY = 100;
+
+            const x = centerX + radius * Math.cos(angleInRadians);
+            const y = centerY - radius * Math.sin(angleInRadians);
+
+            return { x, y };
+        }
+
+        // Main Action: Capture Photo & Trigger Futuristic Scan
+        function takePhotoAndScan() {
+            if (isScanning) return;
+            initAudio();
+
+            isScanning = true;
+            
+            // 1. Capture snapshot image
+            captureSnapshot();
+
+            // 2. Adjust Controls & Badges
+            scanBtn.classList.add('hidden');
+            downloadBtn.classList.add('hidden');
+            faceOverlay.classList.add('opacity-0');
+            scanningOverlay.classList.remove('hidden');
+            scanStatusBox.classList.remove('hidden');
+
+            modeBadge.className = "bg-pink-500/20 border border-pink-500/40 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 text-pink-300 shadow-md";
+            liveDot.className = "w-2 h-2 rounded-full bg-pink-400 animate-ping";
+            modeText.textContent = "SCANNING IN PROGRESS";
+
+            // Reset Meter Dot & Display
+            meterDot.classList.add('opacity-30');
+            meterDot.setAttribute('cx', 100);
+            meterDot.setAttribute('cy', 100);
+            scoreDisplay.textContent = "--";
+            scoreDisplay.className = "text-6xl font-extrabold tracking-tight font-mono text-slate-500";
+            scorePercentSymbol.className = "text-slate-500 font-bold text-2xl";
+            verdictBadge.textContent = "Analyzing Features...";
+            verdictBadge.className = "mt-3 px-4 py-1.5 rounded-full text-xs font-bold bg-slate-800/80 text-slate-400 border border-white/10 uppercase tracking-wider";
+            verdictQuote.textContent = "Extracting golden ratio facial geometry...";
+
+            // 3. Play Scan Audio Sweep
+            playScanSweep();
+
+            // 4. Progress Bar Simulation Steps
+            let progress = 0;
+            const statusMessages = [
+                "DETECTING FACIAL LANDMARKS...",
+                "MEASURING GOLDEN RATIO...",
+                "CALCULATING AURA SPECTRUM...",
+                "FINALIZING ATTRACTIVENESS SCORE..."
+            ];
+
+            const scanInterval = setInterval(() => {
+                progress += Math.floor(Math.random() * 8) + 4;
+                
+                if (progress > 100) progress = 100;
+
+                progressBar.style.width = `${progress}%`;
+                scanProgressText.textContent = `${progress}%`;
+
+                playBeep(300 + progress * 5, 0.05, 'sine');
+
+                if (progress < 30) {
+                    scanStatusText.textContent = statusMessages[0];
+                } else if (progress < 60) {
+                    scanStatusText.textContent = statusMessages[1];
+                } else if (progress < 85) {
+                    scanStatusText.textContent = statusMessages[2];
+                } else {
+                    scanStatusText.textContent = statusMessages[3];
+                }
+
+                if (progress >= 100) {
+                    clearInterval(scanInterval);
+                    setTimeout(finalizeScan, 400);
+                }
+            }, 80);
+        }
+
+        // Finalize Scan & Position Dot on Meter
+        function finalizeScan() {
+            scanningOverlay.classList.add('hidden');
+            scanStatusBox.classList.add('hidden');
+            retakeBtn.classList.remove('hidden');
+            downloadBtn.classList.remove('hidden');
+
+            modeBadge.className = "bg-emerald-500/20 border border-emerald-500/40 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 text-emerald-300 shadow-md";
+            liveDot.className = "w-2 h-2 rounded-full bg-emerald-400";
+            modeText.textContent = "ANALYSIS COMPLETE";
+
+            // Generate Random Score (10 to 100%)
+            lastCalculatedScore = Math.floor(Math.random() * 91) + 10;
+
+            // Position Dot on Meter Arc
+            const pos = calculateDotPosition(lastCalculatedScore);
+            meterDot.setAttribute('cx', pos.x);
+            meterDot.setAttribute('cy', pos.y);
+            meterDot.classList.remove('opacity-30');
+
+            // Sound Fanfare
+            playFanfareSound();
+
+            // Animated Score Counter
+            animateScoreValue(lastCalculatedScore);
+
+            // Determine Verdict Level
+            currentVerdict = verdictLevels.find(v => lastCalculatedScore <= v.max) || verdictLevels[verdictLevels.length - 1];
+
+            // Render Verdict Text & Styling
+            verdictBadge.textContent = currentVerdict.label;
+            verdictBadge.className = `mt-3 px-4 py-1.5 rounded-full text-xs font-bold border uppercase tracking-wider ${currentVerdict.badgeClass}`;
+            
+            const randomQuote = currentVerdict.quotes[Math.floor(Math.random() * currentVerdict.quotes.length)];
+            verdictQuote.textContent = `"${randomQuote}"`;
+
+            // Render Breakdown Stats
+            breakdownCard.classList.remove('opacity-60');
+            analysisStatus.textContent = "VERIFIED";
+            analysisStatus.className = "text-[10px] text-emerald-400 font-bold";
+            symmetryVal.textContent = `${Math.floor(Math.random() * 20 + 80)}%`;
+            charmVal.textContent = `${Math.min(100, lastCalculatedScore + Math.floor(Math.random() * 10))}%`;
+
+            isScanning = false;
+        }
+
+        // Smooth Counter Animation
+        function animateScoreValue(finalScore) {
+            let current = 0;
+            const duration = 1200;
+            const start = performance.now();
+
+            scoreDisplay.className = "text-6xl font-extrabold tracking-tight font-mono shimmer-text";
+            scorePercentSymbol.className = "text-yellow-400 font-bold text-2xl";
+
+            function step(timestamp) {
+                const elapsed = timestamp - start;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                current = Math.floor(easeOut * finalScore);
+
+                scoreDisplay.textContent = current;
+
+                if (progress < 1) {
+                    requestAnimationFrame(step);
+                } else {
+                    scoreDisplay.textContent = finalScore;
+                }
+            }
+
+            requestAnimationFrame(step);
+        }
+
+        // Reset to Live View (Retake)
+        function resetToLiveView() {
+            if (isScanning) return;
+
+            snapshotCanvas.classList.add('hidden');
+            webcam.classList.remove('hidden');
+
+            retakeBtn.classList.add('hidden');
+            downloadBtn.classList.add('hidden');
+            scanBtn.classList.remove('hidden');
+            faceOverlay.classList.remove('opacity-0');
+
+            modeBadge.className = "bg-slate-950/80 border border-white/10 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 text-slate-300 shadow-md";
+            liveDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-ping";
+            modeText.textContent = "READY TO SCAN";
+
+            meterDot.classList.add('opacity-30');
+            meterDot.setAttribute('cx', 100);
+            meterDot.setAttribute('cy', 100);
+
+            scoreDisplay.textContent = "--";
+            scoreDisplay.className = "text-6xl font-extrabold tracking-tight font-mono text-slate-500";
+            scorePercentSymbol.className = "text-slate-500 font-bold text-2xl";
+
+            verdictBadge.textContent = "Awaiting Photo Capture...";
+            verdictBadge.className = "mt-3 px-4 py-1.5 rounded-full text-xs font-bold bg-slate-800/80 text-slate-400 border border-white/10 uppercase tracking-wider";
+            verdictQuote.textContent = 'Click "Take Photo & Scan" to run analysis.';
+
+            breakdownCard.classList.add('opacity-60');
+            analysisStatus.textContent = "IDLE";
+            analysisStatus.className = "text-[10px] text-slate-500";
+            symmetryVal.textContent = "--";
+            charmVal.textContent = "--";
+
+            lastCalculatedScore = null;
+            currentVerdict = null;
+
+            playBeep(600, 0.1);
+        }
+
+        // Draw Helper: Rounded Rectangle
+        function drawRoundedRect(ctx, x, y, width, height, radius, fillStyle, strokeStyle, lineWidth = 1) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+
+            if (fillStyle) {
+                ctx.fillStyle = fillStyle;
+                ctx.fill();
+            }
+            if (strokeStyle) {
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = lineWidth;
+                ctx.stroke();
+            }
+        }
+
+        // Render Gauge Arc onto High-Res Canvas
+        function drawGaugeArc(ctx, centerX, centerY, radius, score) {
+            // Track Arc Background
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI, false);
+            ctx.lineWidth = 26;
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+            ctx.lineCap = "round";
+            ctx.stroke();
+
+            // Gradient Arc
+            const gradient = ctx.createLinearGradient(centerX - radius, centerY, centerX + radius, centerY);
+            gradient.addColorStop(0, "#ef4444");
+            gradient.addColorStop(0.35, "#f97316");
+            gradient.addColorStop(0.65, "#facc15");
+            gradient.addColorStop(1, "#22c55e");
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI, false);
+            ctx.lineWidth = 26;
+            ctx.strokeStyle = gradient;
+            ctx.lineCap = "round";
+            ctx.stroke();
+
+            // Scale Labels
+            ctx.fillStyle = "#ef4444";
+            ctx.font = "bold 14px Outfit";
+            ctx.fillText("0%", centerX - radius - 10, centerY + 30);
+
+            ctx.fillStyle = "#facc15";
+            ctx.fillText("50%", centerX - 14, centerY - radius - 20);
+
+            ctx.fillStyle = "#22c55e";
+            ctx.fillText("100%", centerX + radius - 15, centerY + 30);
+
+            // Glowing Indicator Dot
+            const angleInDegrees = 180 - (score / 100) * 180;
+            const angleInRadians = (angleInDegrees * Math.PI) / 180;
+            
+            const dotX = centerX + radius * Math.cos(angleInRadians);
+            const dotY = centerY - radius * Math.sin(angleInRadians);
+
+            // Glow Circle
+            ctx.save();
+            ctx.shadowColor = "#facc15";
+            ctx.shadowBlur = 18;
+            ctx.beginPath();
+            ctx.arc(dotX, dotY, 11, 0, 2 * Math.PI);
+            ctx.fillStyle = "#facc15";
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "#ffffff";
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Generate Side-by-Side Result Card and Trigger PNG Download
+        function generateAndDownloadCard() {
+            if (lastCalculatedScore === null) return;
+
+            const cardWidth = 1200;
+            const cardHeight = 675; // 16:9 widescreen presentation ratio
+            exportCanvas.width = cardWidth;
+            exportCanvas.height = cardHeight;
+
+            const ctx = exportCanvas.getContext('2d');
+
+            // 1. Dark Gradient Background
+            const bgGradient = ctx.createRadialGradient(cardWidth / 3, 0, 50, cardWidth / 2, cardHeight / 2, 800);
+            bgGradient.addColorStop(0, '#1e1b4b');
+            bgGradient.addColorStop(0.5, '#0f172a');
+            bgGradient.addColorStop(1, '#030712');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, cardWidth, cardHeight);
+
+            // 2. Header Title Banner
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 32px Outfit';
+            ctx.fillText('AuraScan AI • Attractiveness Result', 40, 55);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '16px Outfit';
+            const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            ctx.fillText(`Scanned: ${dateStr}`, cardWidth - 320, 55);
+
+            // Horizontal Separator Line
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(40, 80);
+            ctx.lineTo(cardWidth - 40, 80);
+            ctx.stroke();
+
+            // 3. LEFT PANEL: Snapshot Picture Frame
+            const photoX = 40;
+            const photoY = 110;
+            const photoW = 540;
+            const photoH = 510;
+
+            // Photo Card Container
+            drawRoundedRect(ctx, photoX, photoY, photoW, photoH, 24, 'rgba(17, 24, 39, 0.7)', 'rgba(255, 255, 255, 0.15)', 1.5);
+
+            // Draw Captured Snapshot
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(photoX + 15, photoY + 15, photoW - 30, photoH - 30, 18);
+            ctx.clip();
+
+            // Draw image from snapshotCanvas
+            ctx.drawImage(snapshotCanvas, photoX + 15, photoY + 15, photoW - 30, photoH - 30);
+            ctx.restore();
+
+            // Watermark & Face Target Box Overlay
+            drawRoundedRect(ctx, photoX + 30, photoY + 30, 160, 32, 16, 'rgba(15, 23, 42, 0.75)', 'rgba(236, 72, 153, 0.4)', 1);
+            ctx.fillStyle = '#ec4899';
+            ctx.font = 'bold 12px JetBrains Mono';
+            ctx.fillText('• FACE VERIFIED', photoX + 45, photoY + 51);
+
+            // 4. RIGHT PANEL: Gauge & Results Stats
+            const rightX = 620;
+            const rightY = 110;
+            const rightW = 540;
+            const rightH = 510;
+
+            // Result Panel Box
+            drawRoundedRect(ctx, rightX, rightY, rightW, rightH, 24, 'rgba(17, 24, 39, 0.7)', 'rgba(255, 255, 255, 0.15)', 1.5);
+
+            // Meter Title Header
+            ctx.fillStyle = '#c084fc';
+            ctx.font = 'bold 14px JetBrains Mono';
+            ctx.fillText('ATTRACTIVENESS METER', rightX + 180, rightY + 45);
+
+            // Render Gauge Arc onto Right Panel
+            drawGaugeArc(ctx, rightX + rightW / 2, rightY + 220, 130, lastCalculatedScore);
+
+            // Large Score Number
+            ctx.fillStyle = '#facc15';
+            ctx.font = 'bold 72px JetBrains Mono';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${lastCalculatedScore}%`, rightX + rightW / 2, rightY + 295);
+
+            // Rating Title Badge Box
+            const verdictText = currentVerdict ? currentVerdict.label : "SCORE RESULT";
+            ctx.font = 'bold 18px Outfit';
+            const badgeWidth = ctx.measureText(verdictText).width + 50;
+            const badgeX = rightX + (rightW - badgeWidth) / 2;
+            const badgeY = rightY + 325;
+
+            drawRoundedRect(ctx, badgeX, badgeY, badgeWidth, 40, 20, 'rgba(236, 72, 153, 0.2)', 'rgba(236, 72, 153, 0.5)', 1.5);
+            ctx.fillStyle = '#f472b6';
+            ctx.fillText(verdictText, rightX + rightW / 2, badgeY + 26);
+
+            // Sub-quote text
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = 'italic 14px Outfit';
+            const quoteText = verdictQuote.textContent.replace(/"/g, '');
+            ctx.fillText(`"${quoteText}"`, rightX + rightW / 2, badgeY + 62);
+
+            // Stats Grid Box
+            const statBoxY = rightY + 415;
+            drawRoundedRect(ctx, rightX + 30, statBoxY, 230, 65, 14, 'rgba(15, 23, 42, 0.8)', 'rgba(255, 255, 255, 0.08)', 1);
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#64748b';
+            ctx.font = 'bold 11px JetBrains Mono';
+            ctx.fillText('FACIAL SYMMETRY', rightX + 45, statBoxY + 26);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = 'bold 20px JetBrains Mono';
+            ctx.fillText(symmetryVal.textContent, rightX + 45, statBoxY + 52);
+
+            drawRoundedRect(ctx, rightX + 280, statBoxY, 230, 65, 14, 'rgba(15, 23, 42, 0.8)', 'rgba(255, 255, 255, 0.08)', 1);
+            ctx.fillStyle = '#64748b';
+            ctx.font = 'bold 11px JetBrains Mono';
+            ctx.fillText('CHARM FACTOR', rightX + 295, statBoxY + 26);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = 'bold 20px JetBrains Mono';
+            ctx.fillText(charmVal.textContent, rightX + 295, statBoxY + 52);
+
+            // Reset Text Alignment
+            ctx.textAlign = 'left';
+
+            // 5. Trigger PNG Download Link
+            const imageURI = exportCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `AuraScan-Result-${lastCalculatedScore}Percent.png`;
+            link.href = imageURI;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            playBeep(900, 0.15);
+        }
+
+        // Page Load Init
+        window.onload = function() {
+            startWebcam();
+            document.body.addEventListener('click', () => { initAudio(); }, { once: true });
+        };
+    </script>
+</body>
+</html>
